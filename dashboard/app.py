@@ -3,6 +3,8 @@ import pandas as pd
 import plotly.express as px
 from pathlib import Path
 import statsmodels.api as sm
+import json
+
 
 st.markdown("""
 <style>
@@ -141,4 +143,39 @@ fig4.update_layout(
 st.subheader("Datos filtrados")
 
 st.dataframe(df_filtrado)
+
+#dashboard geomap colombia
+base_path = Path(__file__).resolve().parent.parent
+
+input_file = base_path / "data" / "raw_data" / "colombia.geo.json"
+
+# carga del geojson
+with open(input_file) as f:
+    geojson = json.load(f)
+
+# Clean department names (IMPORTANT)
+df["departamento"] = df["departamento"].str.upper()
+df["departamento"] = df["departamento"].str.strip()
+
+# Select a year column (example: 2023)
+year = st.selectbox("Select year", [col for col in df.columns if col.isdigit()])
+
+# Prepare data
+df_map = df[["departamento", year]].copy()
+df_map = df_map.dropna()
+
+# Create map
+fig = px.choropleth(
+    df_map,
+    geojson=geojson,
+    locations="departamento",
+    featureidkey="properties.NOMBRE_DPT",
+    color=year,
+    color_continuous_scale="Blues",
+    title=f"Colombia Map - {year}"
+)
+
+fig.update_geos(fitbounds="locations", visible=False)
+
+st.plotly_chart(fig, use_container_width=True)
 
