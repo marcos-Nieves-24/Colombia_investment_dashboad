@@ -4,7 +4,7 @@ import plotly.express as px
 from pathlib import Path
 import statsmodels.api as sm
 import json
-
+import unicodedata
 
 st.markdown("""
 <style>
@@ -14,10 +14,11 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+
 # 📌 Configuración
 st.set_page_config(page_title="Inversión en Educación - Colombia", layout="wide")
 
-st.title("📊 Inversión en Educación en Colombia (2002-2025)")
+st.title("Inversión en Educación en Colombia (2002-2025)")
 
 # ubicación del dataset limpio
 base_path = Path(__file__).resolve().parent.parent
@@ -47,17 +48,17 @@ df_filtrado = df[df["presidente"].isin(presidentes)]
 col1, col2, col3 = st.columns(3)
 
 col1.metric(
-    "💰 Gasto total (constante)",
+    "Gasto total (constante)",
     f"{df_filtrado['presupuesto_por_ano_constante'].sum():,.0f}"
 )
 
 col2.metric(
-    "📈 Promedio inflación",
+    "Promedio inflación",
     f"{df_filtrado['tasa_inflacion_por_ano'].mean():.2f}%"
 )
 
 col3.metric(
-    "📅 Años analizados",
+    "Años analizados",
     df_filtrado["año"].nunique()
 )
 
@@ -144,91 +145,146 @@ st.subheader("Datos filtrados")
 
 st.dataframe(df_filtrado)
 
-#dashboard geomap colombia
+# --------------------------
+# dashboard geomap Colombia
+# ---------------------------
 base_path = Path(__file__).resolve().parent.parent
 
 input_file = base_path / "data" / "raw_data" / "colombia.geo.json"
 
 geo_file = base_path / "data" / "raw_data" / "distribucion.csv"
 
-df_geo = pd.read_csv(geo_file, sep=";", encoding="utf-8", engine="python", header=[0,1])
-df_geo.columns = [
-    f"{col[0]}_{col[1]}" if col[1] != '' else col[0]
-    for col in df_geo.columns
-]
+# -----------------
+# carga del dataset
+# -----------------
+df_geo = pd.read_csv(geo_file, sep=";", encoding="utf-8", header=1)
 
-#Columnas del dataset
-st.write("Columnas:", df_geo.columns)
-st.write(df_geo.head())
+df_geo.columns = df_geo.columns.astype(str).str.strip()
+
+
+# ----------------
+# renombrar columnas
+# ----------------
+
+df_geo.rename(columns={df_geo.columns[0]: "departamento"}, inplace=True)
 
 # carga del geojson
 with open(input_file) as f:
     geojson = json.load(f)
 
-# Clean columns
-df_geo.columns = df_geo.columns.str.strip()
+# -----------------------------
+# Clean data
+# -----------------------------
 
-df_geo.columns = [
-    col[1] if "departamento" in col[1] else f"{col[0]}_{col[1]}"
-    for col in df_geo.columns
-]
+# Clean column names
+df_geo.columns = df_geo.columns.str.strip().str.lower()
+
+    
+# Clean department names
+df_geo["departamento"] = df_geo["departamento"].astype(str)
+df_geo["departamento"] = df_geo["departamento"].str.upper().str.strip()
 
 # Remove empty rows
 df_geo = df_geo[df_geo["departamento"].notna()]
 
-# Normalize names
-df_geo["departamento"] = df_geo["departamento"].str.upper().str.strip()
-
-df_geo = df_geo.rename(columns={"departamento": "departamento"})
-
-df_geo = df_geo.loc[:, ~df_geo.columns.str.contains("Unnamed")]
-
-# Fix known names
+# Fix known mismatches
 df_geo["departamento"] = df_geo["departamento"].replace({
-    "BOGOTA": "BOGOTA D.C.",
-    "SAN ANDRES": "ARCHIPIELAGO DE SAN ANDRES, PROVIDENCIA Y SANTA CATALINA"
-})
+    "BOGOTA": "BOGOTA D.C."})
 
-#cleaning numeric columns
+# -----------------------------
+# reparar nombres de departamentos
+# -----------------------------
+
+def clean_text(text):
+    text = str(text).upper().strip()
+    text = unicodedata.normalize('NFKD', text).encode('ascii', 'ignore').decode('utf-8')
+    return text
+
+df_geo["departamento"] = df_geo["departamento"].apply(clean_text)
+
+for f in geojson["features"]:
+    f["properties"]["NOMBRE_DPT"] = clean_text(f["properties"]["NOMBRE_DPT"])
+
+# -----------------------------
+# Departamentos no encontrados en el geojson
+# ------------------------------
+
+geo_names = [f["properties"]["NOMBRE_DPT"] for f in geojson["features"]]
+missing = [name for name in df_geo["departamento"].unique() if name not in geo_names]
+
+
+# limpiar los años (convertir a numérico)
 for col in df_geo.columns:
-    if "_" in col:
+    if col != "departamento":
         df_geo[col] = (
             df_geo[col]
             .astype(str)
-            .str.replace(",", ".")   # fix decimals
-            .str.replace("%", "")    # remove %
+            .str.replace(",", ".", regex=False)
         )
         df_geo[col] = pd.to_numeric(df_geo[col], errors="coerce")
 
-# Select a year column (example: 2023)
-presidentes = sorted(set(col.split("_")[0] for col in df_geo.columns if "_" in col))
 
-presidente = st.selectbox("Select president", presidentes)
 
-cols_presidente = [col for col in df_geo.columns if col.startswith(presidente)]
+# -----------------------------
+# UI
+# -----------------------------
+st.markdown("---")
+st.title("Mapa de distribución de educación en Colombia")
 
-years = [col.split("_")[1] for col in cols_presidente]
+# selección de año
+years = [col for col in df_geo.columns if col.isdigit()]
 
-year = st.selectbox("Select year", years)
+year = st.sidebar.selectbox("Seleccionar el año", sorted(years))
 
-selected_col = f"{presidente}_{year}"
+# -----------------------------
+# Mapa de calor
+# -----------------------------
+#debug
+df_geo.columns = (
+    df_geo.columns
+    .astype(str)
+    .str.strip()
+    .str.replace("\n", "")
+)
 
-# Prepare data
-df_map = df_geo[["departamento", selected_col]].copy()
-df_map = df_map.dropna()
+df_geo = df_geo.drop(columns=["unnamed: 1"], errors="ignore")
 
-# Create map
-fig = px.choropleth(
+df_geo = df_geo[["departamento"] + sorted(
+    [col for col in df_geo.columns if col != "departamento"],
+    key=lambda x: int(x)
+)]
+
+df_long = df_geo.melt(
+    id_vars="departamento",
+    var_name="year",
+    value_name="value"
+)
+
+
+df_long["year"] = df_long["year"].astype(int)
+df_long["value"] = pd.to_numeric(df_long["value"], errors="coerce")
+
+st.write(df.head())
+st.write(df_long.head(20))
+
+st.write("Columnas DEBUG:")
+for col in df_geo.columns:
+    st.write(f"'{col}'")
+
+df_map = df_geo[["departamento", year]].copy()
+
+
+
+fig_mapa = px.choropleth(
     df_map,
     geojson=geojson,
     locations="departamento",
     featureidkey="properties.NOMBRE_DPT",
-    color=selected_col,
-    color_continuous_scale="Reds",
-    title=f"{presidente} - {year}"
+    color=year,
+    color_continuous_scale="Viridis",
+    title="Distribución de educación en Colombia - {year}".format(year=year)
 )
 
-fig.update_geos(fitbounds="locations", visible=False)
-
-st.plotly_chart(fig, use_container_width=True)
-
+fig_mapa.update_geos(fitbounds="locations", visible=False)
+fig_mapa.update_traces(marker_line_width=0.5, marker_line_color="white")
+st.plotly_chart(fig_mapa, use_container_width=True)
