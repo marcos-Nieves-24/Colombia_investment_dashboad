@@ -149,19 +149,72 @@ base_path = Path(__file__).resolve().parent.parent
 
 input_file = base_path / "data" / "raw_data" / "colombia.geo.json"
 
+geo_file = base_path / "data" / "raw_data" / "distribucion.csv"
+
+df_geo = pd.read_csv(geo_file, sep=";", encoding="utf-8", engine="python", header=[0,1])
+df_geo.columns = [
+    f"{col[0]}_{col[1]}" if col[1] != '' else col[0]
+    for col in df_geo.columns
+]
+
+#Columnas del dataset
+st.write("Columnas:", df_geo.columns)
+st.write(df_geo.head())
+
 # carga del geojson
 with open(input_file) as f:
     geojson = json.load(f)
 
-# Clean department names (IMPORTANT)
-df["departamento"] = df["departamento"].str.upper()
-df["departamento"] = df["departamento"].str.strip()
+# Clean columns
+df_geo.columns = df_geo.columns.str.strip()
+
+df_geo.columns = [
+    col[1] if "departamento" in col[1] else f"{col[0]}_{col[1]}"
+    for col in df_geo.columns
+]
+
+# Remove empty rows
+df_geo = df_geo[df_geo["departamento"].notna()]
+
+# Normalize names
+df_geo["departamento"] = df_geo["departamento"].str.upper().str.strip()
+
+df_geo = df_geo.rename(columns={"departamento": "departamento"})
+
+df_geo = df_geo.loc[:, ~df_geo.columns.str.contains("Unnamed")]
+
+# Fix known names
+df_geo["departamento"] = df_geo["departamento"].replace({
+    "BOGOTA": "BOGOTA D.C.",
+    "SAN ANDRES": "ARCHIPIELAGO DE SAN ANDRES, PROVIDENCIA Y SANTA CATALINA"
+})
+
+#cleaning numeric columns
+for col in df_geo.columns:
+    if "_" in col:
+        df_geo[col] = (
+            df_geo[col]
+            .astype(str)
+            .str.replace(",", ".")   # fix decimals
+            .str.replace("%", "")    # remove %
+        )
+        df_geo[col] = pd.to_numeric(df_geo[col], errors="coerce")
 
 # Select a year column (example: 2023)
-year = st.selectbox("Select year", [col for col in df.columns if col.isdigit()])
+presidentes = sorted(set(col.split("_")[0] for col in df_geo.columns if "_" in col))
+
+presidente = st.selectbox("Select president", presidentes)
+
+cols_presidente = [col for col in df_geo.columns if col.startswith(presidente)]
+
+years = [col.split("_")[1] for col in cols_presidente]
+
+year = st.selectbox("Select year", years)
+
+selected_col = f"{presidente}_{year}"
 
 # Prepare data
-df_map = df[["departamento", year]].copy()
+df_map = df_geo[["departamento", selected_col]].copy()
 df_map = df_map.dropna()
 
 # Create map
@@ -170,9 +223,9 @@ fig = px.choropleth(
     geojson=geojson,
     locations="departamento",
     featureidkey="properties.NOMBRE_DPT",
-    color=year,
-    color_continuous_scale="Blues",
-    title=f"Colombia Map - {year}"
+    color=selected_col,
+    color_continuous_scale="Reds",
+    title=f"{presidente} - {year}"
 )
 
 fig.update_geos(fitbounds="locations", visible=False)
