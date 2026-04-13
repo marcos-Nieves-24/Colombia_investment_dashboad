@@ -200,8 +200,7 @@ fig4 = px.scatter(
     }
 )
 
-st.write(df[["año", "gasto_pct_pib"]].head(10))
-
+st.subheader("%PIB destinado a la investigación")
 fig_pib = px.line(
     df_filtrado,
     x="año",
@@ -223,10 +222,11 @@ fig_pib.update_yaxes(
     ticksuffix="%"
 )
 
-st.plotly_chart(fig_pib, use_container_width=True)
+
 
 # display the figure
 st.plotly_chart(fig4, use_container_width=True)
+st.plotly_chart(fig_pib, use_container_width=True)
 
 # estilos personalizados
 fig1.update_layout(
