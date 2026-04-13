@@ -476,7 +476,7 @@ for col in df_geo.columns:
 # UI
 # -----------------------------
 st.markdown("---")
-st.title("Mapa de distribución de educación en Colombia")
+st.title("Mapa de distribución de educación e investigación en Colombia (2002-2025)")
 
 # selección de año
 years = [col for col in df_geo.columns if col.isdigit()]
