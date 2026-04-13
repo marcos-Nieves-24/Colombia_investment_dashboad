@@ -8,17 +8,40 @@ import unicodedata
 
 st.markdown("""
 <style>
+/* Fondo general */
 .main {
     background-color: #0E1117;
+}
+
+/* KPI cards */
+[data-testid="metric-container"] {
+    background-color: #1c1f26;
+    border-radius: 10px;
+    padding: 15px;
+}
+
+/* Sidebar */
+section[data-testid="stSidebar"] {
+    background-color: #111418;
+}
+
+/* Títulos */
+h1, h2, h3 {
+    color: #EAEAEA;
+}
+
+/* Espaciado */
+.block-container {
+    padding-top: 2rem;
 }
 </style>
 """, unsafe_allow_html=True)
 
 
 # 📌 Configuración
-st.set_page_config(page_title="Inversión en Educación - Colombia", layout="wide")
+st.set_page_config(page_title="Inversión en investigación y educación superior - Colombia", layout="wide")
 
-st.title("Inversión en Educación en Colombia (2002-2025)")
+st.title("Inversión en investigación y educación superior en Colombia (2002-2025)")
 
 # ubicación del dataset limpio
 base_path = Path(__file__).resolve().parent.parent
@@ -32,6 +55,40 @@ df = pd.read_csv(input_file,
         engine="python"
     )
 
+pib_dict = {
+    2002: 330,
+    2003: 360,
+    2004: 400,
+    2005: 450,
+    2006: 500,
+    2007: 550,
+    2008: 620,
+    2009: 630,
+    2010: 700,
+    2011: 780,
+    2012: 850,
+    2013: 900,
+    2014: 950,
+    2015: 1000,
+    2016: 1050,
+    2017: 1100,
+    2018: 976,
+    2019: 1000,
+    2020: 1065,
+    2021: 1177,
+    2022: 1420,
+    2023: 1593,
+    2024: 1700,
+    2025: 1800
+}
+
+df["PIB"] = df["año"].map(pib_dict)
+
+df["presupuesto_billones"] = df["presupuesto_por_ano_constante"] / 1_000_000_000_000
+
+df["gasto_pct_pib"] = (
+    df["presupuesto_billones"] / df["PIB"]
+) * 100
 
 # 🎛️ FILTROS
 st.sidebar.header("Filtros")
@@ -45,7 +102,7 @@ presidentes = st.sidebar.multiselect(
 df_filtrado = df[df["presidente"].isin(presidentes)]
 
 # 📊 KPIs
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4 = st.columns(4)
 
 col1.metric(
     "Gasto total (constante)",
@@ -62,6 +119,13 @@ col3.metric(
     df_filtrado["año"].nunique()
 )
 
+col4.metric(
+    "Gasto % PIB",
+    f"{df_filtrado['gasto_pct_pib'].mean():.2f}%"
+)
+
+COLOR_PALETTE = px.colors.qualitative.Set2
+
 # 📈 GRAFICO 1: Gasto por año
 st.subheader("Presupuesto por Año")
 
@@ -71,7 +135,12 @@ fig1 = px.line(
     y="presupuesto_por_ano_constante",
     color="presidente",
     markers=True,
-    title="Evolución del presupuesto (pesos constantes)"
+    color_discrete_sequence=COLOR_PALETTE,
+    title="Evolución del presupuesto presidencial en I+D (2002-2025)",
+    labels={
+        "año": "Año",
+        "presupuesto_por_ano_constante": "Presupuesto ejecutado en mil millones (COP)"
+    }
 )
 
 # display the figure
@@ -86,7 +155,12 @@ fig2 = px.bar(
     df_group,
     x="presidente",
     y="presupuesto_por_ano_constante",
-    title="Gasto total por presidente"
+    color="presidente",
+    color_discrete_sequence=COLOR_PALETTE,
+    labels={
+        "presidente": "Presidente",
+        "presupuesto_por_ano_constante": "Presupuesto acumulado en mil millones (COP)"
+    }
 )
 
 # display the figure
@@ -100,50 +174,223 @@ fig3 = px.line(
     x="año",
     y="tasa_inflacion_por_ano",
     markers=True,
-    title="Inflación anual (%)"
+    line_shape="spline",
+    labels={
+        "año": "Año",
+        "tasa_inflacion_por_ano": "Tasa de inlación por año"
+    }
 )
 
 # display the figure
 st.plotly_chart(fig3, use_container_width=True)
 
 # 📊 GRAFICO 4: Relación inflación vs gasto
-st.subheader("Relación inflación vs presupuesto")
+st.subheader("Impacto de la inflación en el presupuesto")
 
 fig4 = px.scatter(
     df_filtrado,
     x="tasa_inflacion_por_ano",
     y="presupuesto_por_ano_constante",
     color="presidente",
+    color_discrete_sequence=COLOR_PALETTE,
     trendline="ols",
-    title="¿La inflación afecta el gasto?"
+        labels={
+        "presupuesto_por_ano_constante": "Presupuesto por año constante (mil millones)",
+        "tasa_inflacion_por_ano": "Tasa de inlación por año"
+    }
 )
+
+st.write(df[["año", "gasto_pct_pib"]].head(10))
+
+fig_pib = px.line(
+    df_filtrado,
+    x="año",
+    y="gasto_pct_pib",
+    color="presidente",
+    markers=True,
+    labels={
+        "gasto_pct_pib": "% del PIB",
+        "año": "Año"
+    }
+)
+
+fig_pib.update_layout(
+    template="plotly_white"
+)
+
+fig_pib.update_yaxes(
+    title_text="% del PIB",
+    ticksuffix="%"
+)
+
+st.plotly_chart(fig_pib, use_container_width=True)
 
 # display the figure
 st.plotly_chart(fig4, use_container_width=True)
 
 # estilos personalizados
 fig1.update_layout(
-    template="plotly_dark",
-    title_font_size=20
-)
-fig2.update_layout(
-    template="plotly_dark",
-    title_font_size=20
-)
-fig3.update_layout(
-    template="plotly_dark",
-    title_font_size=20
-)
-fig4.update_layout(
-    template="plotly_dark",
-    title_font_size=20
+    template="plotly_white",  
+    plot_bgcolor="white",
+    paper_bgcolor="white",
+
+    font=dict(
+        family="Arial",
+        size=12,
+        color="#2C2C2C"
+    ),
+
+    margin=dict(l=40, r=40, t=40, b=40),
+
+    xaxis=dict(
+        showgrid=True,
+        gridcolor="#E5E5E5"
+    ),
+
+    yaxis=dict(
+        showgrid=True,
+        gridcolor="#E5E5E5"
+    )
 )
 
+fig1.update_layout(
+    xaxis_title="Año",
+    yaxis_title="Presupuesto (COP)"
+)
+
+fig2.update_layout(
+    template="plotly_white",  
+    plot_bgcolor="white",
+    paper_bgcolor="white",
+
+    font=dict(
+        family="Arial",
+        size=12,
+        color="#2C2C2C"
+    ),
+
+    margin=dict(l=40, r=40, t=40, b=40),
+
+    xaxis=dict(
+        showgrid=True,
+        gridcolor="#E5E5E5"
+    ),
+
+    yaxis=dict(
+        showgrid=True,
+        gridcolor="#E5E5E5"
+    )
+)
+
+fig2.update_traces(
+    texttemplate='%{y:,.0f}',
+    textposition='outside'
+)
+
+fig3.update_layout(
+    template="plotly_white",  
+    plot_bgcolor="white",
+    paper_bgcolor="white",
+
+    font=dict(
+        family="Arial",
+        size=12,
+        color="#2C2C2C"
+    ),
+
+    margin=dict(l=40, r=40, t=40, b=40),
+
+    xaxis=dict(
+        showgrid=True,
+        gridcolor="#E5E5E5"
+    ),
+
+    yaxis=dict(
+        showgrid=True,
+        gridcolor="#E5E5E5"
+    )
+)
+
+fig4.update_layout(
+    template="plotly_white",  
+    plot_bgcolor="white",
+    paper_bgcolor="white",
+
+    font=dict(
+        family="Arial",
+        size=12,
+        color="#2C2C2C"
+    ),
+
+    margin=dict(l=40, r=40, t=40, b=40),
+
+    xaxis=dict(
+        showgrid=True,
+        gridcolor="#E5E5E5"
+    ),
+
+    yaxis=dict(
+        showgrid=True,
+        gridcolor="#E5E5E5"
+    )
+)
 
 # 📋 Tabla
-st.subheader("Datos filtrados")
+st.subheader("Resumen de inversión en investigación")
 
-st.dataframe(df_filtrado)
+st.markdown("Tabla de datos")
+# 1. Renombrar columnas (aquí nace df_display)
+df_display = df_filtrado.rename(columns={
+    "presidente": "Presidente",
+    "año": "Año",
+    "presupuesto_por_ano_constante": "Presupuesto (mil millones COP)",
+    "tasa_inflacion_por_ano": "Inflación (%)"
+})
+
+# 2. Seleccionar columnas importantes
+df_display = df_display[
+    ["Presidente", "Año", "Presupuesto (mil millones COP)", "Inflación (%)"]
+]
+
+# 3. Ordenar (opcional pero pro)
+df_display = df_display.sort_values(by="Presupuesto (mil millones COP)", ascending=False)
+
+# 4. Aplicar estilo (🔥 lo importante)
+styled_df = (
+    df_display.style
+    .format({
+        "Presupuesto (mil millones COP)": "${:,.0f}",
+        "Inflación (%)": "{:.2f}%"
+    })
+    .background_gradient(subset=["Presupuesto (mil millones COP)"], cmap="Blues")
+    .background_gradient(subset=["Inflación (%)"], cmap="Reds")
+    .bar(subset=["Presupuesto (mil millones COP)"], color="#5DADE2")
+)
+
+
+st.dataframe(styled_df, use_container_width=True)
+
+st.markdown("""
+<style>
+[data-testid="stDataFrame"] {
+    background-color: #0E1117;
+    border-radius: 12px;
+    padding: 10px;
+}
+
+thead tr th {
+    background-color: #1c1f26 !important;
+    color: #EAEAEA !important;
+    font-weight: bold;
+}
+
+tbody tr:hover {
+    background-color: #262730 !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+
 
 # --------------------------
 # dashboard geomap Colombia
@@ -264,15 +511,8 @@ df_long = df_geo.melt(
 df_long["year"] = df_long["year"].astype(int)
 df_long["value"] = pd.to_numeric(df_long["value"], errors="coerce")
 
-st.write(df.head())
-st.write(df_long.head(20))
-
-st.write("Columnas DEBUG:")
-for col in df_geo.columns:
-    st.write(f"'{col}'")
 
 df_map = df_geo[["departamento", year]].copy()
-
 
 
 fig_mapa = px.choropleth(
@@ -281,10 +521,16 @@ fig_mapa = px.choropleth(
     locations="departamento",
     featureidkey="properties.NOMBRE_DPT",
     color=year,
-    color_continuous_scale="Viridis",
-    title="Distribución de educación en Colombia - {year}".format(year=year)
+    color_continuous_scale="Plasma"  # 🔥 mejor que Viridis para contraste
 )
+
+fig_mapa.update_layout(
+    template="plotly_dark",
+    margin={"r":0,"t":0,"l":0,"b":0}
+)
+
 
 fig_mapa.update_geos(fitbounds="locations", visible=False)
 fig_mapa.update_traces(marker_line_width=0.5, marker_line_color="white")
 st.plotly_chart(fig_mapa, use_container_width=True)
+
