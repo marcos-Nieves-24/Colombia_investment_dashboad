@@ -199,6 +199,7 @@ fig4 = px.scatter(
         "tasa_inflacion_por_ano": "Tasa de inlación por año"
     }
 )
+st.plotly_chart(fig4, use_container_width=True)
 
 st.subheader("%PIB destinado a la investigación")
 fig_pib = px.line(
@@ -225,7 +226,6 @@ fig_pib.update_yaxes(
 
 
 # display the figure
-st.plotly_chart(fig4, use_container_width=True)
 st.plotly_chart(fig_pib, use_container_width=True)
 
 # estilos personalizados
